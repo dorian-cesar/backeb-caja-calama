@@ -1,19 +1,16 @@
 require('dotenv').config();
 
-const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const session = require('express-session');
 
 // -------- instancia Express principal creada en src/app.js --------
 const app = require('./src/app'); // mantiene todas las rutas /api/ para transbank
 
-
-// estáticos para la interfaz de caja
+// ✅ Servir archivos estáticos (simplificado)
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(path.join(__dirname, 'views')));
 
-// Redirección según sesión
+// Redirección raíz
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'home.html'));
 });
@@ -53,12 +50,15 @@ async function connectToPOS() {
         }
       }
 
-      // 2️⃣ Si no conectó, buscar puertos ACM alternativos
+      // 2️⃣ Si no conectó, buscar puertos alternativos (COM para Windows)
       if (!connected) {
         const allPorts = await transbankService.listAvailablePorts();
-        const acmPorts = allPorts.filter(p => p.path.includes('ACM'));
+        // ✅ Buscar puertos COM (Windows) en lugar de solo ACM (Linux)
+        const alternativePorts = allPorts.filter(p => 
+          p.path.includes('COM') || p.path.includes('ACM')
+        );
 
-        for (const port of acmPorts) {
+        for (const port of alternativePorts) {
           if (preferredPorts.includes(port.path.toUpperCase())) continue;
           try {
             console.log(`🔌 Probando puerto alternativo: ${port.path}`);
@@ -130,13 +130,22 @@ async function startServer() {
 
     process.on('SIGINT', () => shutdown('SIGINT'));
     process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('uncaughtException', err => {
-      console.error('❌ uncaughtException:', err);
-      shutdown('uncaughtException');
+    
+    process.on('unhandledRejection', (reason, promise) => {
+      // ✅ EVITAR QUE EL SERVIDOR SE CIERRE POR ERRORES DE PROMESAS
+      console.error('❌ unhandledRejection CAPTURADO (servidor continúa):', reason);
+      // ❌ NO LLAMAR A shutdown() aquí
     });
-    process.on('unhandledRejection', (reason) => {
-      console.error('❌ unhandledRejection:', reason);
-      shutdown('unhandledRejection');
+
+    process.on('uncaughtException', (err) => {
+      // ✅ Solo cerrar por errores realmente críticos
+      console.error('❌ uncaughtException CRÍTICO:', err);
+      // Solo apagar si es un error realmente grave
+      if (err.message.includes('FATAL') || err.code === 'EADDRINUSE') {
+        shutdown('uncaughtException');
+      } else {
+        console.log('✅ Error no crítico, servidor continúa...');
+      }
     });
 
   } catch (fatal) {

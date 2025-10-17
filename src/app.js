@@ -3,11 +3,7 @@ const cors = require('cors');
 const express = require('express');
 const bodyParser = require('body-parser');
 const path = require('path');
-const { imprimirTicket } = require('./services/printService');
-const { reimprimirTicket } = require('./services/printService');
-
 const { imprimir } = require("./controllers/imprimir");
-
 const paymentController = require('./controllers/paymentController');
 const terminalController = require('./controllers/terminalController');
 const transbankService = require('./services/transbankService');
@@ -32,29 +28,8 @@ app.use(bodyParser.json({
 }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// nueva ruta de impresion
-app.post("/api/imprimir", imprimir);
-
 // Ruta de impresion
-app.post('/api/print', async (req, res) => {
-  try {
-    const resultado = await imprimirTicket(req.body);
-    res.json({ success: true, message: resultado });
-  } catch (error) {
-    console.error(error.message);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.post('/api/reprint', async (req, res) => {
-  try {
-    const resultado = await reimprimirTicket(req.body);
-    res.json({ success: true, message: resultado });
-  } catch (error) {
-    console.error(error.message);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+app.post("/api/imprimir", imprimir);
 
 // Rutas de pagos
 app.post('/api/payment', paymentController.processPayment);
