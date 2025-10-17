@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tester POS - Transbank</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert/dist/sweetalert.min.js"></script>
+
+</head>
+<body class="bg-light">
+
+<div class="container py-5">
+  <h1 class="text-center mb-4">Tester POS - Transbank</h1>
+
+  <div class="row g-3">
+
+    <div class="col-md-4">
+      <button id="btnVender" class="btn btn-success w-100">Vender</button>
+    </div>
+
+    <div class="col-md-4">
+      <button id="btnPoll" class="btn btn-primary w-100">Poll</button>
+    </div>
+
+    <div class="col-md-4">
+      <button id="btnLoadKeys" class="btn btn-primary w-100">Load Keys</button>
+    </div>
+
+    <div class="col-md-4">
+      <button id="btnCloseDay" class="btn btn-warning w-100">Close Day</button>
+    </div>
+
+    <div class="col-md-4">
+      <button id="btnGetLastSale" class="btn btn-info w-100">Get Last Sale</button>
+    </div>    
+
+    <div class="col-md-4">
+      <button id="btnDesconectar" class="btn btn-danger w-100">Desconectar POS</button>
+    </div>
+
+    <div class="col-md-4">
+      <button id="btnConnect" class="btn btn-secondary w-100">Conectar POS</button>
+    </div>
+
+  </div>
+
+  <div class="mt-5">
+    <h4>Respuesta:</h4>
+    <pre id="responseArea" class="bg-white p-3 border rounded" style="height: 300px; overflow: auto;"></pre>
+  </div>
+
+</div>
+
+<script>
+  const baseURL = 'http://localhost:3000'; // Base URL del backend
+  
+  // Helper para mostrar respuestas
+  function showResponse(data) {
+    $('#responseArea').text(JSON.stringify(data, null, 2));
+  }
+  
+  // Helper para mostrar alertas    
+  function showAlert(message) {
+    const lowerMessage = message.toLowerCase();
+    const isError = lowerMessage.includes('error') || lowerMessage.includes('problema');
+
+    swal({
+      title: message,
+      icon: isError ? "error" : "success",
+      button: "OK",
+    });
+  }
+  
+  // Botón Vender
+  $('#btnVender').click(() => {
+    const monto = prompt("Ingrese el monto a vender:", "1000");
+    const ticket = prompt("Ingrese el número de ticket:", "12345");
+  
+    axios.post(`${baseURL}/api/payment`, { amount: parseInt(monto), ticketNumber: ticket })
+      .then(res => {
+        showResponse(res.data);
+        showAlert('Venta realizada correctamente');
+      })
+      .catch(err => {
+        showResponse(err.response ? err.response.data : err);
+        showAlert('Error al realizar venta');
+      });
+  });
+  
+  // Botón Poll
+  $('#btnPoll').click(() => {
+  axios.get(`${baseURL}/api/terminal/status`)
+    .then(res => {
+      showResponse(res.data);
+
+      const responseData = res.data;
+
+      // Detectar si contiene explícitamente un OK
+      if (responseData.status === "ACK" || responseData.responseCode === "00" || responseData.message?.toLowerCase().includes("ok")) {
+        showAlert("Polling OK");
+      } else {
+        showAlert("Polling OK, recibido 00");
+      }
+    })
+    .catch(err => {
+      showResponse(err.response ? err.response.data : err);
+      showAlert("Error: Problema de conexión con POS");
+    });
+});
+
+  // Botón Load Keys
+  $('#btnLoadKeys').click(() => {
+    axios.post(`${baseURL}/api/terminal/loadKeys`)
+      .then(res => {
+        showResponse(res.data);
+        showAlert('Carga de llaves exitosa');
+      })
+      .catch(err => {
+        showResponse(err.response ? err.response.data : err);
+        showAlert('Error al cargar llaves');
+      });
+  });
+  
+  // Botón Close Day
+  $('#btnCloseDay').click(() => {
+    axios.post(`${baseURL}/api/terminal/cierre-diario`, { printReport: true })
+      .then(res => {
+        showResponse(res.data);
+        if (res.data && res.data.responseCode === "00") {
+          showAlert("Cierre OK");
+        } else {
+          showAlert("Cierre realizado con observaciones");
+        }
+      })
+      .catch(err => {
+        showResponse(err.response ? err.response.data : err);
+        showAlert('Error al realizar cierre');
+      });
+  });
+  
+  // Botón Get Last Sale
+  $('#btnGetLastSale').click(() => {
+    axios.get(`${baseURL}/api/terminal/last-transaction`)
+      .then(res => {
+        showResponse(res.data);
+        showAlert('Última venta consultada exitosamente');
+      })
+      .catch(err => {
+        showResponse(err.response ? err.response.data : err);
+        showAlert('Error al consultar última venta');
+      });
+  });
+  
+  // Botón Desconectar
+  $('#btnDesconectar').click(() => {
+    axios.post(`${baseURL}/api/terminal/release-port`)
+      .then(res => {
+        showResponse(res.data);
+        showAlert('POS desconectado exitosamente');
+      })
+      .catch(err => {
+        showResponse(err.response ? err.response.data : err);
+        showAlert('Error al desconectar POS');
+      });
+  });
+
+  $('#btnConnect').click(async () => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 2000;
+    const PREFERRED_PORTS = ["COM3"];
+    const RESET_DELAY = 5000; // Tiempo para resetear completamente
+    
+    try {
+      // UI Feedback inicial
+      $('#btnConnect').prop('disabled', true)
+                    .html('<span class="spinner-border spinner-border-sm"></span> Verificando...');
+
+      // 1. Verificar estado actual
+      const statusResponse = await axios.get(`${baseURL}/api/terminal/status`);
+      
+      if (statusResponse.data.data?.connected) {
+        showResponse(statusResponse.data);
+        showAlert('ℹ️ El POS ya está conectado en ' + statusResponse.data.data.port);
+        updateConnectionStatus(true);
+        return;
+      }
+
+      // 2. Liberar puerto y esperar un reset completo
+      $('#btnConnect').html('<span class="spinner-border spinner-border-sm"></span> Liberando puerto...');
+      try {
+        await axios.post(`${baseURL}/api/terminal/release-port`);
+        console.log('Puerto liberado, esperando reset...');
+        await new Promise(resolve => setTimeout(resolve, RESET_DELAY));
+      } catch (disconnectError) {
+        console.warn('No se pudo cerrar conexión previa:', disconnectError.message);
+      }
+
+      // 3. Intentar conexión en puertos preferidos
+      let connected = false;
+      let lastError = null;
+      
+      for (const port of PREFERRED_PORTS) {
+        if (connected) break;
+        
+        for (let attempt = 1; attempt <= MAX_RETRIES && !connected; attempt++) {
+          try {
+            $('#btnConnect').html(`<span class="spinner-border spinner-border-sm"></span> Conectando a ${port} (${attempt}/${MAX_RETRIES})...`);
+            
+            // Intento de conexión con timeout reducido
+            const response = await axios.post(`${baseURL}/api/terminal/connect`, { 
+              portPath: port,
+              retryCount: 0, // No reintentos internos
+              timeout: 1500  // Timeout más corto
+            });
+            
+            // Verificación robusta
+            const verifyResponse = await axios.get(`${baseURL}/api/terminal/status`, { timeout: 2000 });
+            if (verifyResponse.data.data?.connected) {
+              connected = true;
+              showResponse(verifyResponse.data);
+              showAlert(`✅ POS conectado en ${verifyResponse.data.data.port}`);
+              updateConnectionStatus(true);
+              break;
+            }
+          } catch (error) {
+            lastError = error;
+            console.error(`Intento ${attempt} en ${port} falló:`, error.message);
+            
+            // Reset adicional después de cierto número de intentos
+            if (attempt % 2 === 0) {
+              await axios.post(`${baseURL}/api/terminal/release-port`).catch(() => {});
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
+            if (attempt < MAX_RETRIES) await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          }
+        }
+      }
+
+      // 4. Manejo de fallo final
+      if (!connected) {
+        const errorMsg = buildDetailedError(lastError);
+        showAlert(errorMsg);
+        updateConnectionStatus(false);
+      }
+    } catch (finalError) {
+      console.error('Error crítico:', finalError);
+      showAlert('⚠️ Error crítico: ' + (finalError.response?.data?.message || finalError.message));
+    } finally {
+      $('#btnConnect').prop('disabled', false).text('Conectar POS');
+    }
+  });
+
+  function buildDetailedError(error) {
+    let errorMsg = '❌ Error al conectar POS:\n';  
+    errorMsg += 'Desconectar y volver a conectar el cable USB\n';  
+    return errorMsg;
+  }
+
+  // Función auxiliar para actualizar el estado de conexión en la UI
+  function updateConnectionStatus(isConnected) {
+    // Habilitar/deshabilitar otros controles según el estado
+    $('.pos-control').prop('disabled', !isConnected);
+    
+    // Puedes agregar más lógica de UI aquí si es necesario
+    // Por ejemplo, cambiar el color del botón de conexión
+    if (isConnected) {
+      $('#btnConnect').removeClass('btn-secondary').addClass('btn-success');
+      $('#btnDesconectar').removeClass('btn-danger').addClass('btn-secondary');
+    } else {
+      $('#btnConnect').removeClass('btn-success').addClass('btn-secondary');
+      $('#btnDesconectar').removeClass('btn-secondary').addClass('btn-danger');
+    }
+  }
+</script>
+
+</body>
+</html>
