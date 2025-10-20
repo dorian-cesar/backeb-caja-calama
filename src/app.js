@@ -67,6 +67,11 @@ app.get('/monitor', (req, res) => {
   res.json({ success: true, server: true });
 });
 
+app.get("/api/info-caja", (req, res) => {
+  const numeroCaja = process.env.NUMERO_CAJA || "DESCONOCIDA";
+  res.json({ numero_caja: numeroCaja });
+});
+
 // Manejo de errores generales
 app.use((err, req, res, next) => {
   console.error('Error no manejado:', {
